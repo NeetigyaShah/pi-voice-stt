@@ -9,16 +9,19 @@ import {
   type TUI,
 } from "@earendil-works/pi-tui";
 import type { DictationMode } from "../core/dictation-controller";
+import { DEFAULT_PROFILE } from "../config/profiles";
 import type { Strings } from "../i18n/strings";
 
 type VoiceEditorOptions = {
   keybind: string;
+  profileKeybind: string;
   ctx: ExtensionContext;
   getMode(): DictationMode;
   renderLabel(theme: Theme): string;
   onToggle(ctx: ExtensionContext): void;
   onCancel(ctx: ExtensionContext): void;
   onSend(ctx: ExtensionContext): void;
+  onShowProfileMenu(ctx: ExtensionContext): void;
 };
 
 const injectRightLabel = (line: string, width: number, label: string): string => {
@@ -134,6 +137,14 @@ class VoiceEditorWrapper implements EditorComponent {
       return;
     }
 
+    // The profile menu keybind is handled here (editor-focused path), in
+    // addition to pi.registerShortcut, so the menu opens reliably even when a
+    // custom editor component is installed. ctrl+r (recording) wins first.
+    if (matchesKey(data, this.options.profileKeybind as KeyId)) {
+      this.options.onShowProfileMenu(this.options.ctx);
+      return;
+    }
+
     if (mode !== "idle" && matchesKey(data, "escape")) {
       this.options.onCancel(this.options.ctx);
       return;
@@ -193,6 +204,7 @@ const PROCESSING_FRAMES = ["•  ", " • ", "  •", " • "];
 
 export const createInputIndicator = (keybind: string, strings: Strings) => {
   let mode: DictationMode = "idle";
+  let activeProfile = "";
   let tui: TUI | undefined;
   let tick = 0;
   let timer: ReturnType<typeof setInterval> | undefined;
@@ -230,6 +242,10 @@ export const createInputIndicator = (keybind: string, strings: Strings) => {
       syncAnimation();
       requestRender();
     },
+    setProfile(nextProfile: string) {
+      activeProfile = nextProfile;
+      requestRender();
+    },
     renderLabel(theme: Theme): string {
       if (mode === "recording") {
         // Clear on/off blink in red so the recording state is obvious.
@@ -247,12 +263,14 @@ export const createInputIndicator = (keybind: string, strings: Strings) => {
         return `${theme.fg("accent", frame)} ${theme.fg("accent", strings.indicator.polishing)} ${theme.fg("dim", strings.indicator.polishingHint)}`;
       }
 
-      return `${theme.fg("dim", strings.indicator.idle)} ${theme.fg("accent", keybind)}`;
+      const label = activeProfile && activeProfile !== DEFAULT_PROFILE ? `${strings.indicator.idle} · ${activeProfile}` : strings.indicator.idle;
+      return `${theme.fg("dim", label)} ${theme.fg("accent", keybind)}`;
     },
     dispose() {
       stopAnimation();
       tui = undefined;
       mode = "idle";
+      activeProfile = "";
     },
   };
 };

@@ -3,6 +3,7 @@ import { checkBridgeRecorderHealth } from "./audio/bridge-recorder";
 import { createRecorder } from "./audio/factory";
 import { loadConfig, readConfigFile } from "./config/load-config";
 import { resolveStartupOptions } from "./config/startup";
+import { DEFAULT_PROFILE, isKnownProfile, listProfileNames, resolveEffectiveProfile, writeProfileState } from "./config/profiles";
 import { createDictationController, type DictationToast } from "./core/dictation-controller";
 import { DEFAULT_MODE, isKnownMode, listModeNames } from "./core/modes";
 import { createProvider } from "./providers/factory";
@@ -11,6 +12,9 @@ import { assertProviderReady } from "./providers/readiness";
 import { createInputIndicator, createVoiceEditorFactory } from "./ui/input-indicator";
 import { resolveStrings } from "./i18n/strings";
 import { formatError } from "./utils/text";
+import { textFrom } from "./utils/coerce";
+import { kittyCtrlShiftLetterRegex } from "./utils/keybind";
+import type { KeyId } from "@earendil-works/pi-tui";
 
 const toastType = (variant: DictationToast["variant"]): "info" | "warning" | "error" => {
   if (variant === "error") return "error";
@@ -31,11 +35,30 @@ const reportError = (ctx: ExtensionContext | undefined, error: unknown): void =>
 export default function piVoiceSttExtension(pi: ExtensionAPI) {
   const startup = resolveStartupOptions();
   const keybind = startup.keybind;
+  const profileKeybind = startup.profileKeybind;
   const strings = resolveStrings(startup.locale);
   const inputIndicator = createInputIndicator(keybind, strings);
   let activeMode = startup.mode || DEFAULT_MODE;
+  let activeProfile = startup.profile;
+  const terminalInputCleanup: Array<() => void> = [];
 
-  const getConfig = () => loadConfig({ configPath: startup.configPath, mode: activeMode });
+  // Apply the persisted last-selection (sidecar state) once loaded; env and
+  // the config `profile` key are already folded into startup.profile.
+  void (async () => {
+    const fileConfig = await readConfigFile(startup.configPath).catch(() => ({}));
+    const effective = await resolveEffectiveProfile({
+      configPath: startup.configPath,
+      envProfile: textFrom(process.env.PI_STT_PROFILE),
+      configProfile: startup.profile,
+    });
+    const safe = isKnownProfile(fileConfig, effective) ? effective : isKnownProfile(fileConfig, startup.profile) ? startup.profile : DEFAULT_PROFILE;
+    if (safe !== activeProfile) {
+      activeProfile = safe;
+      inputIndicator.setProfile(activeProfile);
+    }
+  })().catch(() => {});
+
+  const getConfig = () => loadConfig({ configPath: startup.configPath, mode: activeMode, profile: activeProfile });
 
   const controller = createDictationController({
     keybind,
@@ -64,10 +87,45 @@ export default function piVoiceSttExtension(pi: ExtensionAPI) {
     onError: reportError,
   });
 
+  const switchProfile = async (ctx: ExtensionContext, next: string): Promise<void> => {
+    if (controller.getMode() === "processing") {
+      notify(ctx, { title: "Pi Voice STT", message: strings.profile.busy, variant: "warning" });
+      return;
+    }
+    activeProfile = next;
+    inputIndicator.setProfile(next);
+    try {
+      await writeProfileState(startup.configPath, next);
+    } catch {
+      notify(ctx, { title: "Pi Voice STT", message: strings.profile.persistFailed, variant: "warning" });
+    }
+    notify(ctx, { title: "Pi Voice STT", message: strings.profile.set(next), variant: "success" });
+  };
+
+  const showProfileMenu = async (ctx: ExtensionContext): Promise<void> => {
+    const fileConfig = await readConfigFile(startup.configPath).catch(() => ({}));
+    const names = listProfileNames(fileConfig);
+    if (names.length <= 1) {
+      notify(ctx, { title: "Pi Voice STT", message: strings.profile.none, variant: "warning" });
+      return;
+    }
+    const labels = names.map((name) => (name === activeProfile ? `${name} (${strings.profile.activeMarker})` : name));
+    const byLabel = new Map(labels.map((label, index) => [label, names[index] ?? ""]));
+    const chosen = await ctx.ui.select(strings.profile.menuTitle, labels);
+    if (!chosen) return;
+    const next = byLabel.get(chosen) ?? "";
+    if (!next || next === activeProfile) return;
+    if (!isKnownProfile(fileConfig, next)) {
+      notify(ctx, { title: "Pi Voice STT", message: strings.profile.unknown(next), variant: "error" });
+      return;
+    }
+    await switchProfile(ctx, next);
+  };
+
   pi.registerCommand("stt", {
-    description: "Voice dictation controls: start, stop, send, cancel, mode, status, doctor.",
+    description: "Voice dictation controls: start, stop, send, cancel, mode, profile, status, doctor.",
     getArgumentCompletions: (prefix) => {
-      const commands = ["start", "stop", "send", "cancel", "mode", "status", "doctor"];
+      const commands = ["start", "stop", "send", "cancel", "mode", "profile", "status", "doctor"];
       return commands
         .filter((command) => command.startsWith(prefix.trim().toLowerCase()))
         .map((command) => ({ value: command, label: command }));
@@ -116,6 +174,26 @@ export default function piVoiceSttExtension(pi: ExtensionAPI) {
         return;
       }
 
+      if (action === "profile") {
+        const fileConfig = await readConfigFile(startup.configPath).catch(() => ({}));
+        const names = listProfileNames(fileConfig);
+        if (!param) {
+          ctx.ui.notify(strings.profile.list(activeProfile, names), "info");
+          return;
+        }
+        const next = param.toLowerCase();
+        if (!isKnownProfile(fileConfig, next)) {
+          ctx.ui.notify(strings.profile.unknown(next), "error");
+          return;
+        }
+        if (next === activeProfile) {
+          ctx.ui.notify(`Pi Voice STT profile is already "${activeProfile}".`, "info");
+          return;
+        }
+        await switchProfile(ctx, next);
+        return;
+      }
+
       if (action === "doctor") {
         try {
           const config = await getConfig();
@@ -134,21 +212,46 @@ export default function piVoiceSttExtension(pi: ExtensionAPI) {
       }
 
       if (action !== "status") {
-        ctx.ui.notify("Usage: /stt [start|stop|send|cancel|mode <name>|status|doctor]", "error");
+        ctx.ui.notify("Usage: /stt [start|stop|send|cancel|mode <name>|profile <name>|status|doctor]", "error");
         return;
       }
 
       const configPath = startup.configPath || "defaults only (set PI_STT_CONFIG or ~/.pi/agent/stt.json)";
-      ctx.ui.notify(`Pi Voice STT: ${controller.getMode()} · mode ${activeMode} · keybind ${keybind} · config ${configPath}`, "info");
+      ctx.ui.notify(`Pi Voice STT: ${controller.getMode()} · mode ${activeMode} · profile ${activeProfile} · keybind ${keybind} · config ${configPath}`, "info");
+    },
+  });
+
+  pi.registerShortcut(startup.profileKeybind as KeyId, {
+    description: "Pi Voice STT: switch profile",
+    handler: async (ctx) => {
+      if (!ctx.hasUI) return;
+      await showProfileMenu(ctx).catch((error: unknown) => reportError(ctx, error));
     },
   });
 
   pi.on("session_start", (_event, ctx) => {
     if (!ctx.hasUI) return;
 
+    // Raw Kitty CSI-u fallback for ctrl+shift+<letter> keybinds: pi-tui's key
+    // parser misreads Kitty modifier 5 (shift+ctrl) as ctrl-only, so match the
+    // raw sequence here. Works when the terminal (and tmux, with
+    // `set -s extended-keys on`) forwards the Kitty keyboard protocol.
+    const kittyRegex = kittyCtrlShiftLetterRegex(profileKeybind);
+    const unsubscribeTerminal = kittyRegex
+      ? ctx.ui.onTerminalInput((data) => {
+          if (kittyRegex.test(data)) {
+            void showProfileMenu(ctx).catch((error: unknown) => reportError(ctx, error));
+            return { consume: true };
+          }
+          return undefined;
+        })
+      : undefined;
+    if (unsubscribeTerminal) terminalInputCleanup.push(unsubscribeTerminal);
+
     const previousEditor = ctx.ui.getEditorComponent();
     ctx.ui.setEditorComponent(createVoiceEditorFactory(previousEditor, {
       keybind,
+      profileKeybind,
       ctx,
       getMode: () => controller.getMode(),
       renderLabel: (theme) => inputIndicator.renderLabel(theme),
@@ -176,10 +279,15 @@ export default function piVoiceSttExtension(pi: ExtensionAPI) {
       onSend: (handlerCtx) => {
         void controller.stopAndSubmit(handlerCtx).catch((error: unknown) => reportError(handlerCtx, error));
       },
+      onShowProfileMenu: (handlerCtx) => {
+        void showProfileMenu(handlerCtx).catch((error: unknown) => reportError(handlerCtx, error));
+      },
     }));
   });
 
   pi.on("session_shutdown", async () => {
+    for (const unsubscribe of terminalInputCleanup) unsubscribe();
+    terminalInputCleanup.length = 0;
     await controller.dispose();
     inputIndicator.dispose();
   });

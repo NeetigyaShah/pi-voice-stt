@@ -132,6 +132,61 @@ Modes are named presets that override any part of the configuration. Built-in mo
 
 A user mode overrides the built-in of the same name. `/stt mode` with no argument prints the active mode and the available list. The mode applies on top of the base config, so it can change the provider, cleanup, language or replacements.
 
+### Profiles
+
+Profiles are named presets that group a full configuration (provider, capture, cleanup, output…), so you can switch models or providers without editing the config file. Unlike modes, profiles persist: the last profile you select becomes the default for every session that reads the same config file.
+
+Define profiles under the top-level `profiles` key. Each profile is a partial config that is deep-merged over the base config, so you only override what differs. The top-level `profile` key sets the initial default before anything is persisted:
+
+```json
+{
+  "profile": "local",
+  "capture": {
+    "type": "ffmpeg",
+    "ffmpegPath": "ffmpeg",
+    "inputFormat": "avfoundation",
+    "input": ":0"
+  },
+  "profiles": {
+    "local": {
+      "provider": {
+        "type": "openai-compatible",
+        "endpoint": "http://127.0.0.1:8788/v1/audio/transcriptions",
+        "model": "crisperwhisper-large",
+        "language": "fr"
+      }
+    },
+    "mistral": {
+      "provider": {
+        "type": "mistral",
+        "model": "voxtral-mini-2602",
+        "apiKeyEnv": "MISTRAL_API_KEY",
+        "language": "fr"
+      }
+    }
+  }
+}
+```
+
+When a profile changes the provider or capture `type`, that block is replaced entirely, so the base endpoint/model/apiKey never leak into the new provider.
+
+Press the profile shortcut (default `Alt+R`) to open a menu and pick the profile to use. Override it with the top-level `profileKeybind` setting or the `PI_STT_PROFILE_KEYBIND` environment variable:
+
+```bash
+PI_STT_PROFILE_KEYBIND=ctrl+shift+p pi
+```
+
+> **Note on `Ctrl+Shift+R`:** the key parser bundled with Pi (pi-tui ≤ 0.80.x) misreads the Kitty keyboard-protocol modifier for `ctrl+shift+<letter>` as plain `ctrl+<letter>` (an upstream off-by-one), so `ctrl+shift+r` is indistinguishable from `ctrl+r` in most terminals. The extension therefore defaults to `Alt+R`, which is reliable everywhere. If you still want `Ctrl+Shift+R`, set `profileKeybind` to it: the extension matches the raw Kitty sequence, which works on terminals that forward the Kitty keyboard protocol (iTerm2, WezTerm, kitty) — inside tmux, also run `set -s extended-keys on`.
+
+The selection applies to the next recording. The last selected profile is persisted in a sidecar state file next to your config (`<config path>.profile.json`) and reused as the default for every session. Effective profile resolution: `PI_STT_PROFILE` environment variable > persisted selection > top-level `profile` key > `default` (no overrides).
+
+Commands:
+
+- `/stt profile` — show the active profile and the available list.
+- `/stt profile <name>` — switch profile directly.
+
+The active profile is shown in the input-border indicator while idle (`voice · local`). Like modes, profiles apply on top of the base config, and modes then apply on top of the selected profile.
+
 ### Voice commands
 
 Optionally trigger an action by ending your dictation with a keyword. Disabled by default; keywords are configurable (English by default, override for any language).

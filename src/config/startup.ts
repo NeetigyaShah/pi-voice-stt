@@ -3,12 +3,15 @@ import { join } from "node:path";
 import { homedir } from "node:os";
 import { objectFrom, textFrom } from "../utils/coerce";
 import { resolvePath } from "../utils/path";
+import { DEFAULT_PROFILE } from "./profiles";
 
 export type StartupOptions = {
   configPath: string;
   keybind: string;
+  profileKeybind: string;
   locale: string;
   mode: string;
+  profile: string;
 };
 
 export const DEFAULT_CONFIG_PATH = join(homedir(), ".pi", "agent", "stt.json");
@@ -25,6 +28,8 @@ export const resolveStartupOptions = (): StartupOptions => {
   const keybind = textFrom(process.env.PI_STT_KEYBIND, textFrom(config.keybind, "ctrl+r"));
   const locale = textFrom(process.env.PI_STT_LOCALE, textFrom(config.locale, "en"));
   const mode = textFrom(process.env.PI_STT_MODE, textFrom(config.mode, "default"));
+  const profileKeybind = textFrom(process.env.PI_STT_PROFILE_KEYBIND, textFrom(config.profileKeybind, "alt+r"));
+  const profile = textFrom(process.env.PI_STT_PROFILE, textFrom(config.profile, DEFAULT_PROFILE));
 
-  return { configPath, keybind, locale, mode };
+  return { configPath, keybind, profileKeybind, locale, mode, profile };
 };

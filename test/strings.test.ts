@@ -24,3 +24,12 @@ test("startRecording interpolates the keybind", () => {
   assert.match(resolveStrings("en").toast.startRecording("ctrl+r"), /ctrl\+r/);
   assert.match(resolveStrings("fr").toast.startRecording("ctrl+r"), /ctrl\+r/);
 });
+
+test("profile strings are present in en and fr packs", () => {
+  const en = resolveStrings("en");
+  const fr = resolveStrings("fr");
+  assert.equal(typeof en.profile.menuTitle, "string");
+  assert.equal(typeof fr.profile.menuTitle, "string");
+  assert.match(en.profile.set("mistral"), /mistral/);
+  assert.match(fr.profile.set("mistral"), /mistral/);
+});

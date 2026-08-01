@@ -8,3 +8,4 @@ coverage/
 !.env.example
 config.local.json
 *.wav
+.pi/

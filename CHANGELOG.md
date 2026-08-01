@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Named profiles: define multiple configurations (provider, capture, cleanup…) under the top-level `profiles` key and switch between them at runtime.
+- Profile switch menu bound to `Alt+R` by default (`profileKeybind` / `PI_STT_PROFILE_KEYBIND`), plus the `/stt profile [name]` command; `Ctrl+Shift+R` is also supported on terminals that forward the Kitty keyboard protocol (pi-tui misreads the Kitty shift+ctrl modifier otherwise).
+- The last selected profile is persisted in a sidecar state file (`<config path>.profile.json`) and reused as the default for every session (`PI_STT_PROFILE` env overrides).
+- The active profile is shown in the input-border indicator (`voice · local`).
+- Switching a profile that changes the provider or capture type replaces that block entirely, so base fields (endpoint, model, apiKey) never leak into the new provider.
+
 ## [0.4.1] - 2026-07-13
 
 ### Fixed

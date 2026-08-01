@@ -133,3 +133,18 @@ test("loadConfig supports AssemblyAI", async () => {
     assert.equal(config.provider.apiKey, "test");
   });
 });
+
+test("loadConfig applies the selected profile before the mode override", async () => {
+  await withConfig({
+    provider: { type: "openai-compatible", endpoint: "http://127.0.0.1:8788/v1/audio/transcriptions", model: "base", apiKey: "k", language: "fr" },
+    profiles: { mistral: { provider: { type: "mistral", apiKey: "mk" } } },
+    modes: { raw: { cleanup: { enabled: false } } },
+  }, async (configPath) => {
+    const withProfile = await loadConfig({ configPath, profile: "mistral" });
+    assert.equal(withProfile.provider.type, "mistral");
+    assert.equal(withProfile.provider.apiKey, "mk");
+    const withProfileAndMode = await loadConfig({ configPath, profile: "mistral", mode: "raw" });
+    assert.equal(withProfileAndMode.provider.type, "mistral");
+    assert.equal(withProfileAndMode.cleanup.enabled, false);
+  });
+});
