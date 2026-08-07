@@ -98,3 +98,87 @@ test("voice editor wrapper opens the profile menu on the profile keybind", () =>
   assert.equal(toggled, true);
   assert.equal(menuOpened, false);
 });
+
+const makeBorderBase = () => ({
+  actionHandlers: new Map<string, () => void>(),
+  render: () => [""],
+  handleInput: () => {},
+  invalidate: () => {},
+  getText: () => "",
+  setText: () => {},
+} as any);
+
+test("voice editor wrapper restores the default border color on idle instead of clearing it", () => {
+  const defaultBorder = (str: string) => `[${str}]`;
+  const base = makeBorderBase();
+  const factory = createVoiceEditorFactory(() => base, {
+    keybind: "ctrl+r",
+    profileKeybind: "alt+r",
+    ctx: { ui: { theme: {} } } as any,
+    getMode: () => "idle",
+    renderLabel: () => "voice ctrl+r",
+    onToggle: () => {},
+    onCancel: () => {},
+    onSend: () => {},
+    onShowProfileMenu: () => {},
+    attachTui: () => {},
+  });
+
+  const editor = factory({} as any, { borderColor: defaultBorder } as any, {} as any) as any;
+  editor.render(80);
+  // Idle must never leave borderColor undefined: pi-tui calls it as a function
+  // during render (issue #15).
+  assert.equal(base.borderColor, defaultBorder);
+});
+
+test("voice editor wrapper tints the border while recording and restores the default on idle", () => {
+  const defaultBorder = (str: string) => `[${str}]`;
+  let mode = "idle";
+  const base = makeBorderBase();
+  const factory = createVoiceEditorFactory(() => base, {
+    keybind: "ctrl+r",
+    profileKeybind: "alt+r",
+    ctx: { ui: { theme: {} } } as any,
+    getMode: () => mode as any,
+    renderLabel: () => "voice ctrl+r",
+    onToggle: () => {},
+    onCancel: () => {},
+    onSend: () => {},
+    onShowProfileMenu: () => {},
+    attachTui: () => {},
+  });
+
+  const editor = factory({} as any, { borderColor: defaultBorder } as any, {} as any) as any;
+
+  mode = "recording";
+  editor.render(80);
+  assert.equal(typeof base.borderColor, "function");
+  assert.notEqual(base.borderColor, defaultBorder);
+
+  mode = "idle";
+  editor.render(80);
+  assert.equal(base.borderColor, defaultBorder);
+});
+
+test("voice editor wrapper prefers the wrapper borderColor over the default on idle", () => {
+  const defaultBorder = (str: string) => `[${str}]`;
+  const wrapperBorder = (str: string) => `{${str}}`;
+  const base = makeBorderBase();
+  const factory = createVoiceEditorFactory(() => base, {
+    keybind: "ctrl+r",
+    profileKeybind: "alt+r",
+    ctx: { ui: { theme: {} } } as any,
+    getMode: () => "idle",
+    renderLabel: () => "voice ctrl+r",
+    onToggle: () => {},
+    onCancel: () => {},
+    onSend: () => {},
+    onShowProfileMenu: () => {},
+    attachTui: () => {},
+  });
+
+  const editor = factory({} as any, { borderColor: defaultBorder } as any, {} as any) as any;
+  editor.borderColor = wrapperBorder;
+  editor.render(80);
+  assert.equal(base.borderColor, wrapperBorder);
+});

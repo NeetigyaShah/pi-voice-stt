@@ -44,6 +44,7 @@ class VoiceEditorWrapper implements EditorComponent {
   constructor(
     private readonly base: EditorComponent,
     private readonly options: VoiceEditorOptions,
+    private readonly defaultBorderColor: (str: string) => string,
   ) {}
 
   // Proxy CustomEditor action handlers and app-level callbacks to the base
@@ -106,15 +107,16 @@ class VoiceEditorWrapper implements EditorComponent {
 
   // While recording/processing, tint the whole prompt border so the state is
   // impossible to miss (red = recording, orange = transcribing). Idle restores
-  // whatever border color pi set on the wrapper.
+  // whatever border color pi set on the wrapper, falling back to the base
+  // editor's default so the tint is cleared without ever leaving borderColor
+  // undefined (pi-tui calls borderColor as a function during render).
   private applyModeBorder(): void {
     const mode = this.options.getMode();
     const theme = this.options.ctx.ui.theme;
     if (mode === "recording") this.base.borderColor = (str: string) => theme.fg("error", str);
     else if (mode === "processing") this.base.borderColor = (str: string) => theme.fg("warning", str);
     else if (mode === "polishing") this.base.borderColor = (str: string) => theme.fg("accent", str);
-    else if (this.borderColor) this.base.borderColor = this.borderColor;
-    else (this.base as unknown as { borderColor: ((str: string) => string) | undefined }).borderColor = undefined;
+    else this.base.borderColor = this.borderColor ?? this.defaultBorderColor;
   }
 
   render(width: number): string[] {
@@ -282,6 +284,7 @@ export const createVoiceEditorFactory = (
   return (tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager): EditorComponent => {
     options.attachTui(tui);
     const base = previousFactory?.(tui, theme, keybindings) ?? new CustomEditor(tui, theme, keybindings);
-    return new VoiceEditorWrapper(base, options);
+    const defaultBorderColor = base.borderColor ?? theme.borderColor;
+    return new VoiceEditorWrapper(base, options, defaultBorderColor);
   };
 };
