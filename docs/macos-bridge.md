@@ -1,13 +1,15 @@
-# Mac microphone bridge for VPS usage
+# Mac native microphone bridge
 
-Pi Voice STT normally records audio on the same machine that runs Pi. When you
-run Pi on a **VPS over SSH** but your microphone is on your **Mac**, the bridge
-lets you keep the exact same `Ctrl+R` experience: audio is captured on the Mac
-by a tiny local daemon and streamed to the VPS through a reverse SSH tunnel.
+Pi Voice STT normally records audio on the same machine that runs Pi. This
+opt-in bridge uses a native macOS recorder when direct `ffmpeg` capture cannot
+receive microphone frames. It supports two topologies:
 
-This is **opt-in and non-native**: it only activates when you set
-`capture.type: "bridge"`. The default `ffmpeg` recorder is unchanged, so users
-running Pi locally are not affected.
+- **Local:** Pi and the bridge run on the same Mac.
+- **VPS:** Pi runs over SSH on a VPS while the bridge runs on the Mac; a reverse
+  SSH tunnel connects their loopback endpoints.
+
+Set `capture.type: "bridge"` to activate it. The default `ffmpeg` recorder is
+unchanged.
 
 ```
    ┌─────────────────────┐         reverse SSH tunnel          ┌──────────────────────┐
@@ -26,16 +28,37 @@ The daemon listens only on the Mac loopback. The VPS reaches it through an SSH
 
 ## When to use this
 
-- You run Pi on a remote VPS / cloud box over SSH.
-- Your physical microphone is on your Mac.
-- You want the same `Ctrl+R` dictation flow you'd have locally.
+- Pi runs locally on a Mac but direct `ffmpeg` capture returns a tiny or silent WAV.
+- Pi runs on a remote VPS / cloud box over SSH while the physical microphone is on a Mac.
 
-If Pi runs on your Mac (or on a machine with a real audio input), you do **not**
-need this — use the default `ffmpeg` recorder.
+## Local Pi on Mac
 
+Install only the local native bridge:
+
+```bash
+tools/install-macos-bridge.sh --local
+```
+
+This creates the bridge LaunchAgent and a bearer token, but makes no SSH or
+`~/.ssh/config` changes. Configure Pi with the local bridge endpoint:
+
+```json
+{
+  "capture": {
+    "type": "bridge",
+    "endpoint": "http://127.0.0.1:18765",
+    "tokenFile": "~/.config/pi-voice-stt-bridge/token"
+  }
+}
+```
+
+The first `/start` may request microphone permission for
+`Pi Voice STT Bridge.app`.
+
+## VPS setup
 ---
 
-## Prerequisites
+### Prerequisites
 
 On your **Mac**:
 
@@ -58,7 +81,7 @@ On your **VPS**:
 
 ---
 
-## Quick start
+### Quick start
 
 ### 1. Install the daemon on your Mac
 
