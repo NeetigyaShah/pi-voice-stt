@@ -49,6 +49,9 @@ if [[ "$LOCAL_ONLY" == "0" && -z "$VPS_HOST_ALIAS" ]]; then
   echo "Usage: $(basename "$0") --local | <vps-ssh-host-alias>" >&2
   exit 1
 fi
+if [[ "$LOCAL_ONLY" == "1" && $# -gt 0 ]]; then
+  echo "Warning: --local mode ignores extra argument(s): $*" >&2
+fi
 
 PORT="${PI_STT_BRIDGE_PORT:-18765}"
 TUNNEL_HOST_ALIAS="${PI_STT_BRIDGE_TUNNEL_HOST_ALIAS:-${VPS_HOST_ALIAS}-voice-tunnel}"
