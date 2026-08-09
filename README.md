@@ -14,7 +14,7 @@ This project is intentionally small and hackable: a Pi extension, local/bridge a
 - `Enter`-to-send and `Esc`-to-cancel while recording.
 - Pi-native animated input indicator, right-aligned in the prompt border (`voice ctrl+r`, `● recording`, `• transcribing`).
 - `ffmpeg` microphone capture to temporary WAV files.
-- Optional Mac microphone bridge for Pi sessions running on a VPS over SSH.
+- Optional native Mac microphone bridge for local Pi sessions or Pi sessions running on a VPS over SSH.
 - Mistral Voxtral provider.
 - OpenAI / Groq / generic OpenAI-compatible provider for hosted and local Whisper-style endpoints.
 - Native provider integrations for Deepgram, ElevenLabs Scribe, Gladia, and AssemblyAI.
@@ -380,27 +380,48 @@ You can also use `model: "whisper-1"` or any OpenAI transcription model supporte
 
 Plain HTTP is accepted only for `localhost`, `127.0.0.1`, or `::1`.
 
-### Mac microphone bridge for VPS usage
+### Mac native microphone bridge
 
-Use this when Pi runs on a VPS but your real microphone is on your Mac. The extension keeps the same `Ctrl+R` UX, but audio capture is delegated to a small local Mac daemon through a reverse SSH tunnel. The bridge is **opt-in**: it only activates when you set `capture.type: "bridge"` — the default `ffmpeg` recorder is unchanged.
+Use the bridge when direct `ffmpeg` capture cannot receive microphone frames on macOS. The bridge is **opt-in**: it activates only with `capture.type: "bridge"`; the default `ffmpeg` recorder remains unchanged.
 
-> See **[docs/macos-bridge.md](docs/macos-bridge.md)** for the full setup guide (architecture, prerequisites, security model, troubleshooting, uninstall).
+> See **[docs/macos-bridge.md](docs/macos-bridge.md)** for architecture, security, troubleshooting, and uninstall details.
 
-**1. On your Mac**, run the installer with the SSH alias of your VPS (as configured in `~/.ssh/config`):
+**Pi running on this Mac:** install the native loopback bridge. It makes no SSH or `~/.ssh/config` changes.
+
+```bash
+tools/install-macos-bridge.sh --local
+```
+
+Configure the extension to use its local endpoint and generated token:
+
+```json
+{
+  "capture": {
+    "type": "bridge",
+    "endpoint": "http://127.0.0.1:18765",
+    "tokenFile": "~/.config/pi-voice-stt-bridge/token",
+    "requestTimeoutSeconds": 30,
+    "maxSeconds": 120,
+    "minBytes": 4096
+  }
+}
+```
+
+**Pi running on a VPS:** run the installer with the SSH alias of the VPS (as configured in `~/.ssh/config`):
 
 ```bash
 tools/install-macos-bridge.sh my-vps
 ```
 
-This installs the daemon, a reverse-SSH-tunnel LaunchAgent, generates a shared bearer token, and adds a `<vps>-voice-tunnel` SSH host with `RemoteForward`. See the installer header (`tools/install-macos-bridge.sh`) for env overrides (port, node/ffmpeg/cmux paths).
+VPS mode installs the daemon, a reverse-SSH-tunnel LaunchAgent, generates a shared bearer token, and adds a `<vps>-voice-tunnel` SSH host with `RemoteForward`. See the installer header for port, node, ffmpeg, and cmux overrides.
 
-**2. Copy the token to your VPS** so Pi on the VPS can authenticate to the tunnel:
+**VPS step 2. Copy the token** so Pi on the VPS can authenticate to the tunnel:
 
 ```bash
 scp ~/.config/pi-voice-stt-bridge/token my-vps:~/.pi/agent/pi-voice-stt-bridge.token
 ```
 
-**3. On your VPS**, point Pi at the bridge (e.g. `~/.pi/agent/stt.json`):
+**VPS step 3.** Point Pi at the bridge (e.g. `~/.pi/agent/stt.json`):
 
 ```json
 {
