@@ -56,7 +56,8 @@ The first `/start` may request microphone permission for
 `Pi Voice STT Bridge.app`.
 
 ## VPS setup
----
+
+Use this topology when Pi runs on a remote machine over SSH and your microphone is on the Mac.
 
 ### Prerequisites
 
