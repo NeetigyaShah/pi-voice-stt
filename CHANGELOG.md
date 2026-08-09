@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-08-09
+
+### Added
+
+- Local `--local` installer mode for the Mac microphone bridge: installs only the native loopback recorder with no SSH or `~/.ssh/config` changes, so Pi running on the same Mac can use the native AVFoundation recorder when direct `ffmpeg` capture cannot receive microphone frames. The default `ffmpeg` recorder is unchanged. (#16, @GratefulDave)
+
+### Fixed
+
+- The bridge installer now warns when `--local` is combined with a VPS host argument instead of ignoring it silently.
+
+### Changed
+
+- Documentation restructured to present the local bridge topology as the simplest setup, with VPS-over-SSH as the advanced case.
+
 ## [0.5.1] - 2026-08-07
 
 ### Fixed
@@ -71,7 +85,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `capture.input`, device listing (`pactl`/`arecord -L`), and the ALSA fallback.
   The README gains a dedicated capture-troubleshooting subsection. (#4)
 
-[Unreleased]: https://github.com/cgarrot/pi-voice-stt/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/cgarrot/pi-voice-stt/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/cgarrot/pi-voice-stt/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/cgarrot/pi-voice-stt/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/cgarrot/pi-voice-stt/compare/v0.4.1...v0.5.0
 [0.4.1]: https://github.com/cgarrot/pi-voice-stt/releases/tag/v0.4.1
