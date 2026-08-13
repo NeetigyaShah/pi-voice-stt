@@ -1,11 +1,12 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync } from "node:fs";
-import { rm, stat } from "node:fs/promises";
+import { readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FfmpegCaptureConfig } from "../config/types";
 import { formatError, truncate } from "../utils/text";
 import type { AudioRecorder, RecordingHandle } from "./types";
+import { maxPcm16LeAmplitude, SILENCE_MAX_AMPLITUDE } from "./wav";
 
 const MAX_STDERR_BYTES = 24 * 1024;
 
@@ -91,6 +92,16 @@ export const createFfmpegRecorder = (config: FfmpegCaptureConfig): AudioRecorder
           `Recording is too small (${size} bytes) — the audio source produced no data. ` +
             `Check microphone permission and that capture.inputFormat/capture.input point to a real device. ` +
             `On Linux, if the default PulseAudio source is empty, try ALSA (inputFormat "alsa", input "default"; list with: arecord -L). ` +
+            truncate(stderrText),
+        );
+      }
+
+      const maxAmplitude = maxPcm16LeAmplitude(await readFile(outputPath));
+      if (maxAmplitude !== undefined && maxAmplitude <= SILENCE_MAX_AMPLITUDE) {
+        throw new Error(
+          `Recording is silent (peak amplitude ${maxAmplitude}) — the audio source produced no sound. ` +
+            `Check microphone permission and that capture.inputFormat/capture.input point to a real device. ` +
+            `On macOS, list devices with: ffmpeg -f avfoundation -list_devices true -i "" and set capture.input to the real microphone (e.g. ":1"). ` +
             truncate(stderrText),
         );
       }

@@ -5,37 +5,13 @@ import { join } from "node:path";
 import type { BridgeCaptureConfig } from "../config/types";
 import { formatError, truncate } from "../utils/text";
 import type { AudioRecorder, RecordingHandle } from "./types";
+import { maxPcm16LeAmplitude, SILENCE_MAX_AMPLITUDE } from "./wav";
 
 const bridgeUrl = (endpoint: string, path: string) => `${endpoint.replace(/\/+$/, "")}${path}`;
 
 const headersFrom = (config: BridgeCaptureConfig): Record<string, string> => {
   if (!config.token) return {};
   return { authorization: `Bearer ${config.token}` };
-};
-
-const maxPcm16LeAmplitude = (audio: Buffer): number | undefined => {
-  if (audio.length < 44 || audio.toString("ascii", 0, 4) !== "RIFF" || audio.toString("ascii", 8, 12) !== "WAVE") return undefined;
-
-  let offset = 12;
-  while (offset + 8 <= audio.length) {
-    const chunkId = audio.toString("ascii", offset, offset + 4);
-    const chunkSize = audio.readUInt32LE(offset + 4);
-    const dataStart = offset + 8;
-    const dataEnd = Math.min(dataStart + chunkSize, audio.length);
-
-    if (chunkId === "data") {
-      let max = 0;
-      for (let index = dataStart; index + 1 < dataEnd; index += 2) {
-        const sample = Math.abs(audio.readInt16LE(index));
-        if (sample > max) max = sample;
-      }
-      return max;
-    }
-
-    offset = dataStart + chunkSize + (chunkSize % 2);
-  }
-
-  return undefined;
 };
 
 type BridgeRequestOptions = {
@@ -108,7 +84,7 @@ export const createBridgeRecorder = (config: BridgeCaptureConfig): AudioRecorder
       }
 
       const maxAmplitude = maxPcm16LeAmplitude(audio);
-      if (maxAmplitude !== undefined && maxAmplitude <= 3) {
+      if (maxAmplitude !== undefined && maxAmplitude <= SILENCE_MAX_AMPLITUDE) {
         throw new Error("Bridge recording is silent. On macOS, make sure the bridge is launched by an app with microphone permission (Terminal/cmux) and that the selected input device is correct.");
       }
 
