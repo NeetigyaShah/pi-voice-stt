@@ -5,6 +5,23 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- The `ffmpeg` recorder now detects digital silence (a valid-size WAV whose peak
+  sample amplitude is at or below `SILENCE_MAX_AMPLITUDE`) and fails with a
+  "Recording is silent" error instead of sending silent audio to the provider
+  and surfacing a confusing empty-transcription error. This matches the existing
+  silence detection in the bridge recorder; the shared WAV amplitude helper
+  lives in `src/audio/wav.ts`.
+
+### Changed
+
+- Capture troubleshooting in the README now covers silent recordings and the
+  empty-transcription error they cause, and calls out virtual devices
+  (ZoomAudioDevice, BlackHole, OBS) that can occupy `:0` on macOS.
+
 ## [0.6.0] - 2026-08-09
 
 ### Added

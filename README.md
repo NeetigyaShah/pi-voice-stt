@@ -464,9 +464,11 @@ Then set `capture.input`, for example `":0"` or `":1"`.
 
 On Linux, you may prefer PulseAudio/PipeWire (`pulse`) or ALSA (`alsa`) depending on your system.
 
-#### "Recording is too small" / no audio captured
+#### "Recording is too small" / "Recording is silent" / no audio captured
 
-This means the configured audio source produced no data. To fix it:
+Both errors mean the configured audio source produced no usable audio. A **silent** recording (e.g. a virtual device such as ZoomAudioDevice selected instead of the real microphone) is a normal-sized WAV of pure silence, so it passes the size check but transcribes to nothing — providers like ElevenLabs then report an empty transcription (`"did not include text"`). The ffmpeg and bridge recorders both detect silence and report it directly.
+
+To fix it:
 
 1. **Microphone permission** — grant microphone access to the terminal running Pi (System Settings → Privacy & Security → Microphone).
 2. **Pick the right source (Linux/PulseAudio).** List sources and target one that actually captures:
@@ -479,7 +481,7 @@ This means the configured audio source produced no data. To fix it:
    { "capture": { "inputFormat": "alsa", "input": "default" } }
    ```
    List ALSA devices with `arecord -L` (common inputs: `default`, `hw:0`, `plughw:0`).
-4. **macOS** — confirm the device with `ffmpeg -f avfoundation -list_devices true -i ""` and set `capture.input` (e.g. `":1"`).
+4. **macOS** — confirm the device with `ffmpeg -f avfoundation -list_devices true -i ""` and set `capture.input` (e.g. `":1"`). The default `":0"` may be a virtual device (Zoom, BlackHole, OBS) that records silence; pick the index of the real microphone.
 
 You can also lower the threshold with `capture.minBytes` (default `4096`), but a working source should far exceed it. See [docs/macos-bridge.md](docs/macos-bridge.md) for the VPS bridge as an alternative when the VPS has no local microphone.
 
