@@ -1,12 +1,11 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync } from "node:fs";
-import { readFile, rm, stat } from "node:fs/promises";
+import { rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { FfmpegCaptureConfig } from "../config/types";
 import { formatError, truncate } from "../utils/text";
 import type { AudioRecorder, RecordingHandle } from "./types";
-import { maxPcm16LeAmplitude, SILENCE_MAX_AMPLITUDE } from "./wav";
 
 const MAX_STDERR_BYTES = 24 * 1024;
 
@@ -33,13 +32,14 @@ export const createFfmpegRecorder = (config: FfmpegCaptureConfig): AudioRecorder
   start() {
     const tempDir = mkdtempSync(join(tmpdir(), "pi-voice-stt-"));
     const outputPath = join(tempDir, "recording.wav");
-    const process = spawn(config.ffmpegPath, [
+    const isDshow = config.inputFormat === "dshow";
+    const args = [
       "-hide_banner",
-      "-nostdin",
       "-loglevel",
       "warning",
       "-f",
       config.inputFormat,
+      ...(isDshow ? ["-audio_buffer_size", "20"] : []),
       "-i",
       config.input,
       "-vn",
@@ -51,22 +51,33 @@ export const createFfmpegRecorder = (config: FfmpegCaptureConfig): AudioRecorder
       String(config.channels),
       "-y",
       outputPath,
-    ], {
-      stdio: ["ignore", "ignore", "pipe"],
+    ];
+    const child = spawn(config.ffmpegPath, args, {
+      stdio: ["pipe", "ignore", "pipe"],
     });
 
-    const getStderr = collectStderr(process.stderr);
-    const exited = waitForExit(process);
+    const getStderr = collectStderr(child.stderr);
+    const exited = waitForExit(child);
+    const startTime = Date.now();
     let stopped = false;
 
     const terminate = () => {
-      if (process.exitCode !== null) return;
-      try { process.kill("SIGINT"); } catch { /* already dead */ }
+      if (child.exitCode !== null) return;
+      if (process.platform === "win32") {
+        try {
+          if (child.stdin && !child.stdin.destroyed && child.stdin.writable) {
+            child.stdin.write("q\n");
+            child.stdin.end();
+            return;
+          }
+        } catch { /* ignore */ }
+      }
+      try { child.kill("SIGINT"); } catch { /* already dead */ }
     };
 
     const forceKill = () => {
-      if (process.exitCode !== null) return;
-      try { process.kill("SIGKILL"); } catch { /* already dead */ }
+      if (child.exitCode !== null) return;
+      try { child.kill("SIGKILL"); } catch { /* already dead */ }
     };
 
     const stop = async () => {
@@ -74,7 +85,6 @@ export const createFfmpegRecorder = (config: FfmpegCaptureConfig): AudioRecorder
         stopped = true;
         terminate();
       }
-
       const killTimer = setTimeout(forceKill, 3000);
       const exitResult = await exited;
       clearTimeout(killTimer);
@@ -87,25 +97,13 @@ export const createFfmpegRecorder = (config: FfmpegCaptureConfig): AudioRecorder
         throw new Error(`ffmpeg did not create an audio file (${exitResult}). ${truncate(stderrText)}`);
       }
 
-      if (size < config.minBytes) {
+      const effectiveMinBytes = 44;
+      if (size <= effectiveMinBytes) {
         throw new Error(
-          `Recording is too small (${size} bytes) — the audio source produced no data. ` +
-            `Check microphone permission and that capture.inputFormat/capture.input point to a real device. ` +
-            `On Linux, if the default PulseAudio source is empty, try ALSA (inputFormat "alsa", input "default"; list with: arecord -L). ` +
+          `Recording is empty (${size} bytes). ` +
             truncate(stderrText),
         );
       }
-
-      const maxAmplitude = maxPcm16LeAmplitude(await readFile(outputPath));
-      if (maxAmplitude !== undefined && maxAmplitude <= SILENCE_MAX_AMPLITUDE) {
-        throw new Error(
-          `Recording is silent (peak amplitude ${maxAmplitude}) — the audio source produced no sound. ` +
-            `Check microphone permission and that capture.inputFormat/capture.input point to a real device. ` +
-            `On macOS, list devices with: ffmpeg -f avfoundation -list_devices true -i "" and set capture.input to the real microphone (e.g. ":1"). ` +
-            truncate(stderrText),
-        );
-      }
-
       return outputPath;
     };
 

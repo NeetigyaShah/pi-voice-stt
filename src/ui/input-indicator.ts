@@ -197,6 +197,12 @@ class VoiceEditorWrapper implements EditorComponent {
     this.base.setAutocompleteMaxVisible?.(maxVisible);
   }
 
+  setUseTerminalCursor(value: boolean): void {
+    const baseRec = this.base as unknown as Record<string, unknown>;
+    if (typeof baseRec.setUseTerminalCursor === "function") {
+      (baseRec.setUseTerminalCursor as (v: boolean) => void)(value);
+    }
+  }
   dispose(): void {
     (this.base as EditorComponent & { dispose?: () => void }).dispose?.();
   }
@@ -285,6 +291,25 @@ export const createVoiceEditorFactory = (
     options.attachTui(tui);
     const base = previousFactory?.(tui, theme, keybindings) ?? new CustomEditor(tui, theme, keybindings);
     const defaultBorderColor = base.borderColor ?? theme.borderColor;
-    return new VoiceEditorWrapper(base, options, defaultBorderColor);
+    const wrapper = new VoiceEditorWrapper(base, options, defaultBorderColor);
+
+    return new Proxy(wrapper, {
+      get(target, prop, receiver) {
+        if (Reflect.has(target, prop)) {
+          const val = Reflect.get(target, prop, receiver);
+          if (typeof val === "function") return val.bind(target);
+          return val;
+        }
+        const baseVal = Reflect.get(base, prop);
+        if (typeof baseVal === "function") return baseVal.bind(base);
+        return baseVal;
+      },
+      set(target, prop, value, receiver) {
+        if (Reflect.has(target, prop)) {
+          return Reflect.set(target, prop, value, receiver);
+        }
+        return Reflect.set(base, prop, value);
+      },
+    }) as EditorComponent;
   };
 };

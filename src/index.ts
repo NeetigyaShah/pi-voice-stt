@@ -221,6 +221,7 @@ export default function piVoiceSttExtension(pi: ExtensionAPI) {
     },
   });
 
+
   pi.registerShortcut(startup.profileKeybind as KeyId, {
     description: "Pi Voice STT: switch profile",
     handler: async (ctx) => {
@@ -248,41 +249,46 @@ export default function piVoiceSttExtension(pi: ExtensionAPI) {
       : undefined;
     if (unsubscribeTerminal) terminalInputCleanup.push(unsubscribeTerminal);
 
-    const previousEditor = ctx.ui.getEditorComponent();
-    ctx.ui.setEditorComponent(createVoiceEditorFactory(previousEditor, {
-      keybind,
-      profileKeybind,
-      ctx,
-      getMode: () => controller.getMode(),
-      renderLabel: (theme) => inputIndicator.renderLabel(theme),
-      attachTui: (tui) => inputIndicator.attach(tui),
-      onToggle: (handlerCtx) => {
-        void (async () => {
-          // Idle -> start recording. While recording/processing -> stop. The
-          // stop path honors output.submitOnStop: when enabled, Ctrl+R also
-          // sends the transcript to chat (like Enter), instead of only
-          // inserting it into the prompt.
-          if (controller.getMode() === "idle") {
-            await controller.toggle(handlerCtx);
-            return;
-          }
-          const submitOnStop = await getConfig()
-            .then((config) => config.output.submitOnStop)
-            .catch(() => false);
-          if (submitOnStop) await controller.stopAndSubmit(handlerCtx);
-          else await controller.toggle(handlerCtx);
-        })().catch((error: unknown) => reportError(handlerCtx, error));
-      },
-      onCancel: (handlerCtx) => {
-        void controller.cancel(handlerCtx).catch((error: unknown) => reportError(handlerCtx, error));
-      },
-      onSend: (handlerCtx) => {
-        void controller.stopAndSubmit(handlerCtx).catch((error: unknown) => reportError(handlerCtx, error));
-      },
-      onShowProfileMenu: (handlerCtx) => {
-        void showProfileMenu(handlerCtx).catch((error: unknown) => reportError(handlerCtx, error));
-      },
-    }));
+    const uiRecord = ctx.ui as unknown as Record<string, unknown> | undefined;
+    const getEditorFn = typeof uiRecord?.getEditorComponent === "function" ? (uiRecord.getEditorComponent as () => unknown) : undefined;
+    const previousEditor = getEditorFn ? getEditorFn() : undefined;
+    const setEditorFn = typeof uiRecord?.setEditorComponent === "function" ? (uiRecord.setEditorComponent as (factory: unknown) => void) : undefined;
+
+    if (setEditorFn) {
+      const previousFactory = typeof previousEditor === "function"
+        ? (previousEditor as Parameters<typeof createVoiceEditorFactory>[0])
+        : undefined;
+      setEditorFn(createVoiceEditorFactory(previousFactory, {
+        keybind,
+        profileKeybind,
+        ctx,
+        getMode: () => controller.getMode(),
+        renderLabel: (theme) => inputIndicator.renderLabel(theme),
+        attachTui: (tui) => inputIndicator.attach(tui),
+        onToggle: (handlerCtx) => {
+          void (async () => {
+            if (controller.getMode() === "idle") {
+              await controller.toggle(handlerCtx);
+              return;
+            }
+            const submitOnStop = await getConfig()
+              .then((config) => config.output.submitOnStop)
+              .catch(() => false);
+            if (submitOnStop) await controller.stopAndSubmit(handlerCtx);
+            else await controller.toggle(handlerCtx);
+          })().catch((error: unknown) => reportError(handlerCtx, error));
+        },
+        onCancel: (handlerCtx) => {
+          void controller.cancel(handlerCtx).catch((error: unknown) => reportError(handlerCtx, error));
+        },
+        onSend: (handlerCtx) => {
+          void controller.stopAndSubmit(handlerCtx).catch((error: unknown) => reportError(handlerCtx, error));
+        },
+        onShowProfileMenu: (handlerCtx) => {
+          void showProfileMenu(handlerCtx).catch((error: unknown) => reportError(handlerCtx, error));
+        },
+      }));
+    }
   });
 
   pi.on("session_shutdown", async () => {

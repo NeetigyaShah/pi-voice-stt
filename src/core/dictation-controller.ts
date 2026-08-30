@@ -237,7 +237,11 @@ export const createDictationController = (options: DictationControllerOptions) =
     }
   };
 
+  let lastToggleTime = 0;
   const toggle = async (ctx: ExtensionContext) => {
+    const now = Date.now();
+    if (now - lastToggleTime < 400) return;
+    lastToggleTime = now;
     rememberContext(ctx);
     if (recording || processing) {
       await stopRecording(ctx);
