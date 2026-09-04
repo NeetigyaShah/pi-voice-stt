@@ -288,6 +288,8 @@ export default function piVoiceSttExtension(pi: ExtensionAPI) {
           void showProfileMenu(handlerCtx).catch((error: unknown) => reportError(handlerCtx, error));
         },
       }));
+    } else {
+      console.warn("Pi Voice STT voice editor UI skipped: host ExtensionUI has no setEditorComponent.");
     }
   });
 
